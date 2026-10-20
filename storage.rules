@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// Storage rules: CV files and exports are PRIVATE. Only the owner may read
+// via short-lived signed URLs generated server-side. Clients never get
+// blanket download access.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{uid}/{allPaths=**} {
+      allow read: if false; // signed URLs only (Admin SDK bypasses rules)
+      allow write: if false; // uploads go through trusted server routes
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

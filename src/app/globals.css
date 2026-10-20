@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   RelocateOS design tokens — source of truth: design.md
+   Neutral editorial base, deep-navy accent, small semantic status palette.
+--------------------------------------------------------------------------- */
+
+@theme {
+  --color-canvas: #f7f7f5;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f2f2ef;
+  --color-border: #e4e4e0;
+  --color-border-strong: #d0d0ca;
+  --color-ink: #16181d;
+  --color-ink-muted: #5c6169;
+  --color-ink-subtle: #878c94;
+
+  --color-accent: #12314f;
+  --color-accent-hover: #0c2439;
+  --color-accent-subtle: #e8eef4;
+
+  --color-success: #1b6b4a;
+  --color-success-subtle: #e6f2ec;
+  --color-warning: #8a5a00;
+  --color-warning-subtle: #fbf2de;
+  --color-danger: #9b2c2c;
+  --color-danger-subtle: #f9e8e8;
+  --color-info: #1f5f8b;
+  --color-info-subtle: #e7f0f6;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-control: 6px;
+  --radius-card: 8px;
+  --radius-dialog: 10px;
+
+  --shadow-dialog: 0 8px 24px rgba(22, 24, 29, 0.1);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+
+  h1 {
+    font-size: 1.5rem;
+    line-height: 2;
+    letter-spacing: -0.01em;
+  }
+
+  h2 {
+    font-size: 1.25rem;
+    line-height: 1.6;
+  }
+
+  h3 {
+    font-size: 1.0625rem;
+    line-height: 1.5;
+  }
+
+  a {
+    color: var(--color-accent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background: var(--color-accent-subtle);
+  }
+}
+
+@utility eyebrow {
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-subtle);
+}
+
+@utility data-font {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@utility metric-number {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Thin scrollbars for dense tables */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border-strong) transparent;
+}

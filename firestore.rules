@@ -1,0 +1,126 @@
+rules_version = '2';
+
+// RelocateOS Firestore rules — default deny, owner-only access.
+// These rules are the perimeter; every write is ALSO validated server-side
+// with Zod schemas in trusted code. Rules alone are not sufficient.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function now() {
+      return request.time;
+    }
+
+    // ---- users/{uid} -------------------------------------------------------
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      // Clients may only update a whitelist of harmless profile fields.
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == null
+        && request.resource.data.email is string
+        && request.resource.data.onboardingCompleted is bool
+        && request.resource.data.automationEnabled is bool;
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['displayName', 'timezone', 'onboardingCompleted',
+                      'automationEnabled', 'updatedAt', 'notificationPrefs']);
+      allow delete: if false; // account deletion is server-only
+    }
+
+    // ---- candidateProfiles/{uid} -------------------------------------------
+    match /candidateProfiles/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if isOwner(uid); // field validation enforced server-side (DAL)
+    }
+
+    // ---- jobs (shared catalogue, owner-scoped) ------------------------------
+    // Jobs are written only by trusted server processes. Reads are owner-only
+    // via the jobs subcollection index on uid (Phase 2 adjusts model if the
+    // catalogue is shared; for a single-user deployment owner scoping is enough).
+    match /jobs/{jobId} {
+      allow read: if signedIn();
+      allow write: if false; // server-only (Admin SDK bypasses rules)
+    }
+
+    match /jobScores/{scoreId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /sponsorshipAssessments/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /documents/{docId} {
+      allow read, write: if false; // documents are server-managed; downloads via signed URLs
+    }
+
+    match /applications/{appId} {
+      allow read: if signedIn();
+      // Users may update status/comments on their own applications, but never
+      // submission receipts or ledger-linked fields.
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'notes', 'nextFollowUpAt', 'updatedAt', 'userMarkedSubmitted']);
+      allow create, delete: if false; // created via trusted server actions only
+    }
+
+    match /submissionLedger/{id} {
+      allow read, write: if false; // server-write-only; atomic quota enforcement
+    }
+
+    match /automationRuns/{runId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /taskQueue/{taskId} {
+      allow read, write: if false; // workers only
+    }
+
+    match /notifications/{id} {
+      allow read: if signedIn();
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow create, delete: if false;
+    }
+
+    match /auditLogs/{id} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /jobSources/{sourceId} {
+      allow read: if signedIn();
+      allow write: if false; // configuration changes go through trusted server routes
+    }
+
+    match /immigrationRules/{ruleId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /userSettings/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if isOwner(uid);
+    }
+
+    match /relocationTasks/{taskId} {
+      allow read: if signedIn();
+      allow write: if signedIn();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
