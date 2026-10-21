@@ -5,6 +5,7 @@ import { createLogger, newCorrelationId } from "@/lib/logging/logger";
 import { connection } from "next/server";
 import { detectCvFormat, extractCvText } from "@/lib/documents/extract";
 import { cvFileSchema } from "@domain/schemas/candidate-profile";
+import { saveCvOriginalFirestore } from "@/lib/storage/cv-store";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -64,14 +65,16 @@ export async function POST(request: Request) {
   }
   const extractedText = result.text;
 
-  // Persist: original binary + extracted text in Storage, CvFile metadata on profile.
-  // Storage may be unavailable (no billing / bucket not provisioned) — extraction
-  // still succeeds; we just skip file persistence and the CvFile record.
+  // Persist: original binary + extracted text. Preferred backend is Firebase
+  // Storage (needs billing); on Spark plans we fall back to the Firestore-
+  // chunked CV store so the original file is never silently dropped.
   const docId = `cv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const originalPath = `users/${user.uid}/cv-imports/${docId}.${format}`;
   const textPath = `users/${user.uid}/cv-imports/${docId}.txt`;
   let storageOk = true;
+  let storageBackend: "gcs" | "firestore" = "gcs";
   let originalStoragePath = originalPath;
+  let textStoragePath = textPath;
 
   try {
     const bucket = adminStorage().bucket();
@@ -82,12 +85,30 @@ export async function POST(request: Request) {
         resumable: false,
       }),
     ]);
-  } catch (err) {
-    storageOk = false;
-    originalStoragePath = "";
-    log.warn("cv_storage_unavailable", {
-      error: err instanceof Error ? err.message : String(err),
+  } catch (gcsErr) {
+    log.warn("cv_storage_gcs_unavailable", {
+      error: gcsErr instanceof Error ? gcsErr.message : String(gcsErr),
     });
+    try {
+      originalStoragePath = await saveCvOriginalFirestore({
+        uid: user.uid,
+        docId,
+        buffer,
+        contentType,
+        originalName: file.name,
+        extractedText,
+      });
+      textStoragePath = `${originalStoragePath}#text`;
+      storageBackend = "firestore";
+      log.info("cv_storage_fallback_firestore", { uid: user.uid, docId });
+    } catch (fsErr) {
+      storageOk = false;
+      originalStoragePath = "";
+      textStoragePath = "";
+      log.warn("cv_storage_unavailable", {
+        error: fsErr instanceof Error ? fsErr.message : String(fsErr),
+      });
+    }
   }
 
   const uploadedAt = new Date().toISOString();
@@ -96,7 +117,7 @@ export async function POST(request: Request) {
   if (storageOk) {
     const cvFile = cvFileSchema.parse({
       id: docId,
-      storagePath: originalPath,
+      storagePath: originalStoragePath,
       originalName: file.name,
       contentType,
       sizeBytes: file.size,
@@ -120,6 +141,7 @@ export async function POST(request: Request) {
     chars: extractedText.length,
     method: format,
     storageOk,
+    storageBackend,
     cvFileId,
   });
 
@@ -127,7 +149,7 @@ export async function POST(request: Request) {
     extractedText: extractedText.slice(0, 20000),
     truncated: extractedText.length > 20000,
     originalChars: extractedText.length,
-    storagePath: storageOk ? textPath : "",
+    storagePath: textStoragePath,
     originalStoragePath,
     originalName: file.name,
     contentType,
@@ -135,8 +157,9 @@ export async function POST(request: Request) {
     method: format,
     cvFileId,
     formatLabel: FORMAT_LABELS[format],
+    storageBackend,
     storageWarning: storageOk
       ? null
-      : "File storage is unavailable on this project — text was extracted for review, but the original file was not saved.",
+      : "File storage is unavailable on this project — text was extracted for review, but the original file could not be saved.",
   });
 }

@@ -10,6 +10,7 @@ import {
   type RawGreenhouseJob,
 } from "../domain/jobs/normalise";
 import type { JobSearchQuery } from "../domain/schemas/job";
+import { locationMatches } from "./location";
 
 /**
  * Greenhouse Job Board API adapter (public discovery only).
@@ -115,14 +116,7 @@ export class GreenhouseAdapter implements JobSourceAdapter {
         return terms.some((t) => haystack.includes(t));
       });
     }
-    if (query.cities.length > 0) {
-      const cities = query.cities.map((c) => c.toLowerCase());
-      drafts = drafts.filter((d) =>
-        cities.some(
-          (c) => d.location.toLowerCase().includes(c) || d.city.toLowerCase().includes(c),
-        ),
-      );
-    }
+    drafts = drafts.filter((d) => locationMatches(d, query));
     if (query.postedWithinDays != null) {
       const cutoff = Date.now() - query.postedWithinDays * 24 * 60 * 60 * 1000;
       drafts = drafts.filter((d) => {

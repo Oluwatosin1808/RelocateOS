@@ -122,6 +122,9 @@ export function CvImportReview({ profile }: { profile: CandidateProfile }) {
                 {result.originalName} · {result.originalChars.toLocaleString("en-GB")} characters
                 {result.truncated ? " (preview truncated)" : ""}
               </span>
+              {result.cvFileId && !result.storageWarning && (
+                <Badge tone="success">Original file stored</Badge>
+              )}
             </div>
             {result.storageWarning && (
               <p className="text-[0.8125rem] text-warning">{result.storageWarning}</p>

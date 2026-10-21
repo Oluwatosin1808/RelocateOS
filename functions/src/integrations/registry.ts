@@ -29,9 +29,19 @@ export function buildAdapterForSource(source: JobSource): JobSourceAdapter | nul
 
 /**
  * Build a search query from the candidate's confirmed preferences.
- * Keywords combine role titles, synonyms, technology pool and sponsorship
- * discovery terms. Keyword presence helps discovery; it is NEVER treated as
- * proof of eligibility (that is the sponsorship module's job, Phase 3).
+ *
+ * Keywords come only from role families and the technology pool — they are a
+ * high-recall discovery gate. Sponsorship phrases are deliberately NOT a hard
+ * filter: most boards never use them, which would zero-out discovery for
+ * boards that simply don't mention visas (Elastic, GitLab). Sponsorship
+ * evidence instead feeds the scoring module's dedicated component, and the
+ * immigration assessment remains the only eligibility authority.
+ *
+ * If the profile has no enabled role families or skills yet, keywords are
+ * empty (no keyword gate) rather than collapsing to sponsorship-only terms.
+ * Location: target countries match by name/alias ("Netherlands") or
+ * word-boundary code; postings that are genuinely global ("Remote") are kept
+ * only when the profile's workplace preferences include remote.
  */
 export function buildSearchQuery(
   profile: CandidateProfile,
@@ -48,14 +58,14 @@ export function buildSearchQuery(
   for (const skill of profile.searchPreferences.skillsKeywordPool) {
     keywords.add(skill);
   }
-  for (const kw of profile.searchPreferences.sponsorshipKeywords.slice(0, 4)) {
-    keywords.add(kw);
-  }
+
+  const workplaces = profile.relocationPreferences.workplaceTypes;
 
   return {
     keywords: [...keywords].slice(0, max),
     countries: profile.relocationPreferences.targetCountries,
     cities: profile.relocationPreferences.cityPreferences,
+    includeGlobalRemote: workplaces.includes("remote"),
     postedWithinDays: null,
     limit: 200,
   };

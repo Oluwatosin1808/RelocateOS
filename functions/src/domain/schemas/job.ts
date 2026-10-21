@@ -111,6 +111,8 @@ export const jobSearchQuerySchema = z.object({
   keywords: z.array(z.string().max(120)).default([]),
   countries: z.array(countryCodeSchema).default([]),
   cities: z.array(z.string().max(120)).default([]),
+  /** Allow postings that are genuinely location-independent (e.g. "Remote"). */
+  includeGlobalRemote: z.boolean().optional(),
   postedWithinDays: z.number().int().min(1).max(90).nullable().default(null),
   limit: z.number().int().min(1).max(500).default(100),
 });

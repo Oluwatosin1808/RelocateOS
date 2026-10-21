@@ -52,7 +52,7 @@ async function Content() {
             configured={capabilities.email.configured}
             detail={
               capabilities.email.provider === "none"
-                ? "No email provider — notifications are stored but not delivered. Set EMAIL_PROVIDER=resend and EMAIL_API_KEY in .env.local to enable."
+                ? "No email provider — notifications are stored but not delivered. Set EMAIL_PROVIDER=smtp (or resend) plus its credentials in env to enable."
                 : `Provider: ${env.email.provider}${env.email.fromAddress ? ` · From: ${env.email.fromAddress}` : ""}`
             }
           />
@@ -72,8 +72,12 @@ async function Content() {
           />
           <CapabilityRow
             label="Scheduled scan"
-            configured={true}
-            detail="Cloud Function runs every 6 hours (deployed via `firebase deploy --only functions`)."
+            configured={Boolean(env.schedulerSecret)}
+            detail={
+              env.schedulerSecret
+                ? "An external cron service (e.g. cron-job.org) POSTs to /api/cron/scan every 6 hours with the scheduler secret."
+                : "No SCHEDULER_SECRET configured — set it in env, then point a cron service at POST /api/cron/scan."
+            }
           />
         </CardBody>
       </Card>
