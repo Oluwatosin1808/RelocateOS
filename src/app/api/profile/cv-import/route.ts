@@ -146,8 +146,8 @@ export async function POST(request: Request) {
   });
 
   return jsonOk({
-    extractedText: extractedText.slice(0, 20000),
-    truncated: extractedText.length > 20000,
+    extractedText: extractedText.slice(0, 60000),
+    truncated: extractedText.length > 60000,
     originalChars: extractedText.length,
     storagePath: textStoragePath,
     originalStoragePath,
