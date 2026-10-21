@@ -743,3 +743,10 @@ px playwright install chromium --with-deps.
 - **GitHub**: gh CLI v2.102.0 installed; repo NOT pushed yet (gh device login failed repeatedly: expired code + PowerShell/cmd quoting issues spawning background gh auth login). Local git initialized, all files committed (initial commit), secret audit clean (git ls-files: no .env.local/service-account/secrets).
 - Tests after SMTP work: 134/134, lint 0 errors, typecheck clean (app+functions).
 - Gotchas hit: ercel env pull redacts Sensitive values (no --decrypt in v59); PowerShell start /b "quoted-exe" treats exe path as window TITLE -> "cannot find file auth".
+
+## Log — GitHub push + CI green (2026-10-21)
+
+- Scrubbed secrets from tracked files before first push (GitHub push protection blocked `GCP service-account-bound AI Studio key` at `context.md:663`): context.md keys redacted; `e2e/helpers/auth.ts` now reads `NEXT_PUBLIC_FIREBASE_API_KEY` from env/.env.local instead of hardcoding.
+- Pushed to https://github.com/Oluwatosin1808/RelocateOS (branch `main`) using PAT with `repo`+`workflow` scopes; credential stored in Windows Credential Manager; remote URL token-free.
+- First CI run failed (functions deps never installed on CI); fixed `.github/workflows/ci.yml` with `npm --prefix functions ci` step; second run **all green** (typecheck, 134 unit tests, lint, build).
+- Delivery status: Vercel prod live, external cron verified, Gmail SMTP email verified, 28 Playwright E2E green locally, code on GitHub with green CI.
