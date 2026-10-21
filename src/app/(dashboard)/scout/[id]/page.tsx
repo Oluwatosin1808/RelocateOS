@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { FitIndicator, formatSalaryRange } from "@/components/jobs/job-row";
 import { JobActions } from "@/components/jobs/job-actions";
+import { ApplyKit } from "@/components/jobs/apply-kit";
+import { buildStandardAnswers } from "@domain/applications/answers";
 import { ScorePanel } from "@/components/jobs/score-panel";
 import { AiAnalysisPanel } from "@/components/jobs/ai-analysis-panel";
 import { DownloadDocButton } from "@/components/documents/download-button";
@@ -134,6 +136,14 @@ async function PageContent({ params }: { params: Params }) {
       </div>
 
       <JobActions jobId={job.id} status={job.status} applicationUrl={job.applicationUrl} />
+
+      {profile && (
+        <ApplyKit
+          jobId={job.id}
+          answers={buildStandardAnswers(profile, job)}
+          applyUrl={job.applicationUrl || job.canonicalUrl}
+        />
+      )}
 
       <Card>
         <CardHeader>

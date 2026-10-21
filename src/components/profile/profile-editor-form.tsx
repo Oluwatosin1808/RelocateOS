@@ -29,6 +29,7 @@ const profileEditorSchema = z.object({
   professionalSummary: z.string().max(2000).default(""),
   requiresEmployerSponsorship: z.boolean().default(true),
   hasEuWorkPermit: z.boolean().default(false),
+  noticePeriodWeeks: z.number().int().min(0).max(104).nullable().default(null),
   minGrossMonthlyEur: z.number().int().min(0).max(50000),
   targetCountries: z.array(z.enum(["NL", "BE"])).min(1),
   workplaceTypes: z.array(z.enum(["remote", "hybrid", "onsite"])).min(1),
@@ -57,6 +58,7 @@ export function ProfileEditorForm({ profile }: { profile: CandidateProfile }) {
       professionalSummary: profile.professionalSummary,
       requiresEmployerSponsorship: profile.workAuthorisation.requiresEmployerSponsorship,
       hasEuWorkPermit: profile.workAuthorisation.hasEuWorkPermit,
+      noticePeriodWeeks: profile.workAuthorisation.noticePeriodWeeks,
       minGrossMonthlyEur: profile.salaryPreferences.minGrossMonthlyEur,
       targetCountries: profile.relocationPreferences.targetCountries,
       workplaceTypes: profile.relocationPreferences.workplaceTypes,
@@ -122,6 +124,7 @@ export function ProfileEditorForm({ profile }: { profile: CandidateProfile }) {
           ...profile.workAuthorisation,
           requiresEmployerSponsorship: values.requiresEmployerSponsorship,
           hasEuWorkPermit: values.hasEuWorkPermit,
+          noticePeriodWeeks: values.noticePeriodWeeks,
         },
         salaryPreferences: {
           ...profile.salaryPreferences,
@@ -288,6 +291,21 @@ export function ProfileEditorForm({ profile }: { profile: CandidateProfile }) {
               <Checkbox {...register("hasEuWorkPermit")} />
               Holds an EU work permit
             </label>
+            <FormField
+              label="Notice period (weeks)"
+              htmlFor="noticePeriodWeeks"
+              hint="Used in every application's standard answers. Leave empty if not applicable."
+              error={errors.noticePeriodWeeks?.message}
+            >
+              <Input
+                id="noticePeriodWeeks"
+                type="number"
+                placeholder="e.g. 4"
+                {...register("noticePeriodWeeks", {
+                  setValueAs: (v) => (v === "" || v === null ? null : Number(v)),
+                })}
+              />
+            </FormField>
           </div>
         </CardBody>
       </Card>

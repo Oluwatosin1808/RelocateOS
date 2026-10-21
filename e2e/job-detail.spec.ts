@@ -18,7 +18,10 @@ test.describe("Job detail", () => {
     // The seeded test job from earlier smoke tests.
     await page.goto("/scout/mock-ats__test-job-1");
     await expect(page.getByRole("heading", { name: /senior frontend engineer/i })).toBeVisible();
-    await expect(page.getByText(/testco bv/i)).toBeVisible();
+    await expect(page.getByText("TestCo BV · Amsterdam")).toBeVisible();
+    // Application kit (packet + standard answers)
+    await expect(page.getByRole("heading", { name: /application kit/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /download packet/i })).toBeVisible();
     // AI analysis panel present
     await expect(page.getByRole("heading", { name: /ai analysis/i })).toBeVisible();
     // Job actions (record application)

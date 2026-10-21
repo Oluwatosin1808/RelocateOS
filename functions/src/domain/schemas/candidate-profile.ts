@@ -118,6 +118,7 @@ export const workAuthorisationSchema = z.object({
   hasEuWorkPermit: z.boolean().default(false),
   euPermitDetails: z.string().max(1000).default(""),
   requiresEmployerSponsorship: z.boolean().default(true),
+  noticePeriodWeeks: z.number().int().min(0).max(104).nullable().default(null),
   immigrationHistory: z.string().max(2000).default(""),
   notes: z.string().max(2000).default(""),
 });

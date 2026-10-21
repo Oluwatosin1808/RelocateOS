@@ -25,6 +25,7 @@
     "test:functions": "npm --prefix functions run test",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "playwright test",
+    "autofill": "node scripts/autofill.mjs",
     "emulators": "firebase emulators:start --only auth,firestore,storage,functions --project relocateos-dev",
     "firebase": "firebase"
   },
