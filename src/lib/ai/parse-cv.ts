@@ -32,7 +32,7 @@ STRICT RULES:
 - Extract ONLY what is literally written in the CV. Never invent, guess, or complete missing facts. Missing fields are "" and missing arrays are [].
 - Output ONLY a JSON object (no markdown fences, no commentary) matching EXACTLY this shape:
 {
-  "contact": {"fullName": "", "email": "", "phone": "", "currentCity": "", "currentCountry": "", "nationality": "", "linkedinUrl": "", "githubUrl": ""},
+  "contact": {"fullName": "", "email": "", "phone": "", "currentCity": "", "currentCountry": "", "nationality": "", "linkedinUrl": "", "githubUrl": "", "portfolioUrls": []},
   "professionalSummary": "",
   "workExperience": [{"jobTitle":"","employer":"","location":"","startDate":"YYYY-MM or YYYY or empty","endDate":"YYYY-MM or YYYY or empty","isCurrent":false,"description":"","technologies":[]}],
   "education": [{"institution":"","qualification":"","fieldOfStudy":"","startDate":"","endDate":"","grade":""}],
@@ -44,13 +44,27 @@ STRICT RULES:
 - Dates: convert to "YYYY-MM" or "YYYY". If the CV says "Present/Current", set endDate "" and isCurrent true.
 - description: join the role's bullet points with newlines. Keep only bullets literally under that role.
 - employmentType is not part of the output.
-- professionalSummary: only the CV's own summary/objective section text, condensed to <=2000 chars; "" if none.`;
+- professionalSummary: only the CV's own summary/objective section text, condensed to <=2000 chars; "" if none.
+- portfolioUrls: personal website/portfolio URLs only (e.g. "Portfolio: https://mysite.dev" or a bare site URL). LinkedIn and GitHub links belong in linkedinUrl/githubUrl, never here.`;
 
 /** Merge deterministic facts into AI gaps (AI misses nothing twice). */
 function fillGaps(ai: CvProfileDraft, det: CvProfileDraft): CvProfileDraft {
   const merged: CvProfileDraft = structuredClone(ai);
-  for (const key of Object.keys(merged.contact) as (keyof CvProfileDraft["contact"])[]) {
+  const scalarContactKeys = [
+    "fullName", "email", "phone", "currentCity", "currentCountry",
+    "nationality", "linkedinUrl", "githubUrl",
+  ] as const satisfies readonly (keyof CvProfileDraft["contact"])[];
+  for (const key of scalarContactKeys) {
     if (!merged.contact[key]) merged.contact[key] = det.contact[key];
+  }
+  // ![] is false — arrays must be gap-filled explicitly; portfolio unions so a
+  // CV-listed site is never lost when AI returns other links
+  const portfolioSeen = new Set(merged.contact.portfolioUrls.map((u) => u.toLowerCase()));
+  for (const u of det.contact.portfolioUrls) {
+    if (!portfolioSeen.has(u.toLowerCase()) && merged.contact.portfolioUrls.length < 5) {
+      merged.contact.portfolioUrls.push(u);
+      portfolioSeen.add(u.toLowerCase());
+    }
   }
   if (!merged.professionalSummary) merged.professionalSummary = det.professionalSummary;
   if (merged.workExperience.length === 0) merged.workExperience = det.workExperience;
@@ -105,6 +119,27 @@ export async function parseCvProfile(text: string): Promise<CvParseResult> {
     // AI often echoes bare domains — make them schema-valid URLs
     if (draft.contact.linkedinUrl) draft.contact.linkedinUrl = normaliseUrl(draft.contact.linkedinUrl);
     if (draft.contact.githubUrl) draft.contact.githubUrl = normaliseUrl(draft.contact.githubUrl);
+    // Project URLs: bare domains → schema-valid, drop hostless garbage
+    for (const proj of draft.projects) {
+      if (!proj.url) continue;
+      const u = normaliseUrl(proj.url);
+      const host = u.replace(/^https?:\/\//i, "").split(/[/?#]/)[0] ?? "";
+      proj.url = /^https?:\/\/\S+$/i.test(u) && host.includes(".") ? u : "";
+    }
+    // Portfolio: normalise, drop invalid/non-portfolio links, dedupe, cap
+    draft.contact.portfolioUrls = [
+      ...new Set(
+        draft.contact.portfolioUrls
+          .map((u) => normaliseUrl(u))
+          .filter((u) => {
+            if (!/^https?:\/\/\S+$/i.test(u) || /linkedin\.com|github\.com/i.test(u)) {
+              return false;
+            }
+            const host = u.replace(/^https?:\/\//i, "").split(/[/?#]/)[0] ?? "";
+            return host.includes(".");
+          }),
+      ),
+    ].slice(0, 5);
     return {
       source: "ai",
       draft,

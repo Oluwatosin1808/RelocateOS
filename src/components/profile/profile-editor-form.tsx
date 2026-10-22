@@ -26,6 +26,25 @@ const profileEditorSchema = z.object({
   nationality: z.string().max(120).default(""),
   linkedinUrl: z.string().url().or(z.literal("")).default(""),
   githubUrl: z.string().url().or(z.literal("")).default(""),
+  portfolioUrlsText: z
+    .string()
+    .default("")
+    .refine(
+      (v) =>
+        v
+          .split(/[\n,]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .every((u) => {
+            try {
+              new URL(u);
+              return true;
+            } catch {
+              return false;
+            }
+          }),
+      "Each entry must be a valid URL (one per line)",
+    ),
   professionalSummary: z.string().max(2000).default(""),
   requiresEmployerSponsorship: z.boolean().default(true),
   hasEuWorkPermit: z.boolean().default(false),
@@ -55,6 +74,7 @@ export function ProfileEditorForm({ profile }: { profile: CandidateProfile }) {
       nationality: profile.contact.nationality,
       linkedinUrl: profile.contact.linkedinUrl,
       githubUrl: profile.contact.githubUrl,
+      portfolioUrlsText: profile.contact.portfolioUrls.join("\n"),
       professionalSummary: profile.professionalSummary,
       requiresEmployerSponsorship: profile.workAuthorisation.requiresEmployerSponsorship,
       hasEuWorkPermit: profile.workAuthorisation.hasEuWorkPermit,
@@ -118,6 +138,11 @@ export function ProfileEditorForm({ profile }: { profile: CandidateProfile }) {
           nationality: values.nationality,
           linkedinUrl: values.linkedinUrl,
           githubUrl: values.githubUrl,
+          portfolioUrls: values.portfolioUrlsText
+            .split(/[\n,]/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 20),
         },
         professionalSummary: values.professionalSummary,
         workAuthorisation: {
@@ -205,6 +230,15 @@ export function ProfileEditorForm({ profile }: { profile: CandidateProfile }) {
             className="sm:col-span-2"
           >
             <Textarea id="professionalSummary" rows={4} {...register("professionalSummary")} />
+          </FormField>
+          <FormField
+            label="Portfolio URLs"
+            htmlFor="portfolioUrlsText"
+            hint="One URL per line — personal site or portfolio (LinkedIn/GitHub have their own fields)."
+            error={errors.portfolioUrlsText?.message}
+            className="sm:col-span-2"
+          >
+            <Textarea id="portfolioUrlsText" rows={2} {...register("portfolioUrlsText")} />
           </FormField>
         </CardBody>
       </Card>

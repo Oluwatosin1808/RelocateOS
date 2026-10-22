@@ -24,6 +24,7 @@ export const cvDraftContactSchema = z.object({
   nationality: z.string().default(""),
   linkedinUrl: z.string().default(""),
   githubUrl: z.string().default(""),
+  portfolioUrls: z.array(z.string()).default([]),
 });
 
 export const cvDraftExperienceSchema = z.object({
@@ -155,7 +156,7 @@ const SECTION_PATTERNS: { key: SectionKey; re: RegExp }[] = [
   { key: "skills", re: /^((technical|core|key)\s+)?(skills|competenc(y|ies)|technolog(y|ies)|tech stack|tools)\b/i },
   { key: "languages", re: /^languages?\b/i },
   { key: "certifications", re: /^(certifications?|certificates?|licenses?)\b/i },
-  { key: "projects", re: /^(selected |relevant |personal |key )?projects?\b/i },
+  { key: "projects", re: /^(projects?\b|(selected|relevant|personal|key)\s+projects?\b|portfolio\b|links?\b)/i },
 ];
 
 function isSectionHeader(line: string): SectionKey | null {
@@ -220,6 +221,44 @@ export function parseCvDraft(text: string): CvProfileDraft {
   if (linkedin) draft.contact.linkedinUrl = normaliseUrl(linkedin[0]);
   const github = text.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[^\s,;)"']+/i);
   if (github) draft.contact.githubUrl = normaliseUrl(github[0]);
+
+  // Portfolio / personal site: labelled anywhere ("Portfolio: ada.dev") or bare
+  // URL-ish tokens in the contact header lines — never linkedin/github, free
+  // mail hosts, or the email's own domain (so an email host never becomes a
+  // "portfolio"). Honest extraction only; cap at 5.
+  const emailDomain = draft.contact.email.split("@")[1]?.toLowerCase().replace(/^www\./, "") ?? "";
+  const NON_PORTFOLIO_HOSTS = new Set([
+    "gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "yahoo.co.uk", "aol.com",
+    "icloud.com", "me.com", "proton.me", "protonmail.com", "live.com", "msn.com",
+    "yandex.com", "mail.com", "gmx.com", "zoho.com", "example.com", "example.org",
+  ]);
+  const portfolioSeen = new Set<string>();
+  const addPortfolio = (raw: string) => {
+    const u = normaliseUrl(raw);
+    if (!/^https?:\/\/\S+$/i.test(u) || portfolioSeen.size >= 5) return;
+    const host = u.replace(/^https?:\/\//i, "").split(/[/?#]/)[0]!.toLowerCase().replace(/^www\./, "");
+    if (!host || !host.includes(".")) return;
+    if (host.includes("linkedin.com") || host.includes("github.com")) return;
+    if (NON_PORTFOLIO_HOSTS.has(host) || host.endsWith(".example.com")) return;
+    if (emailDomain && (host === emailDomain || host.endsWith(`.${emailDomain}`))) return;
+    portfolioSeen.add(u);
+  };
+  // Header contact lines: explicit http(s)/www tokens + bare domains on a
+  // conservative TLD allowlist (so "Next.js" or "2024.5" never match).
+  for (const line of lines.slice(0, 6)) {
+    for (const m of line.matchAll(
+      /(?:https?:\/\/|www\.)[^\s,;•|)'"]+|(?<![@\w.-])(?:[a-z0-9-]+\.)+(?:dev|io|me|nl|be|app|site|design|tech|ai|xyz|co|uk|to|sh|fm|com|net|org)\b(?:\/[^\s,;•|)'"]*)?/gi,
+    )) {
+      if (!m[0].includes("@")) addPortfolio(m[0]);
+    }
+  }
+  // Labelled values anywhere in the CV text
+  for (const m of text.matchAll(
+    /(?:portfolio|website|web\s?site|personal\s?site|homepage)\s*[:\-–—]\s*((?:https?:\/\/)?[^\s,;•|)'"]+)/gi,
+  )) {
+    addPortfolio(m[1]!);
+  }
+  draft.contact.portfolioUrls = [...portfolioSeen];
 
   // City/Country: contact line such as "Lagos, Nigeria · email…"
   for (const raw of lines.slice(0, 4)) {
@@ -396,6 +435,105 @@ export function parseCvDraft(text: string): CvProfileDraft {
     }
   }
 
+  // --- projects: plain line starts an entry; bullets/URL/tech attach ---
+  type ProjSeg = { name: string; desc: string[]; url: string; technologies: string[] };
+  let curProj: ProjSeg | null = null;
+  const pushProj = () => {
+    if (curProj && curProj.name.trim()) {
+      draft.projects.push({
+        name: curProj.name.trim().slice(0, 160),
+        description: curProj.desc.join("\n").slice(0, 3000),
+        url: curProj.url,
+        technologies: [...new Set(curProj.technologies)].slice(0, 40),
+      });
+    }
+    curProj = null;
+  };
+  for (const raw of sections.projects) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (BULLET_RE.test(raw)) {
+      if (curProj) curProj.desc.push(raw.replace(BULLET_RE, "").trim());
+      continue;
+    }
+    const techM = line.match(/^(?:tech\w*|stack|tools)\s*:\s*(.+)$/i);
+    if (techM) {
+      if (curProj) curProj.technologies.push(...splitList(techM[1]!));
+      continue;
+    }
+    if (/^(?:https?:\/\/|www\.)\S+$/i.test(line)) {
+      const u = normaliseUrl(line);
+      // A bare URL with no current entry is a portfolio link, not a project.
+      if (curProj) curProj.url = u;
+      else if (!/linkedin\.com|github\.com/i.test(u)) draft.contact.portfolioUrls.push(u);
+      continue;
+    }
+    // New entry: strip date parens + parenthetical URLs, split "Name — description"
+    pushProj();
+    let nameLine = line;
+    let url = "";
+    const urlParens = nameLine.match(/\(\s*((?:https?:\/\/|www\.)[^\s)]+)\s*\)/i);
+    if (urlParens) {
+      url = normaliseUrl(urlParens[1]!);
+      nameLine = nameLine.replace(urlParens[0], " ");
+    }
+    const trailingUrl = nameLine.match(/\s+((?:https?:\/\/|www\.)\S+)\s*$/);
+    if (trailingUrl && !url) {
+      url = normaliseUrl(trailingUrl[1]!);
+      nameLine = nameLine.replace(trailingUrl[0], " ");
+    }
+    nameLine = nameLine
+      .replace(/\([^)]*\)/g, (s) =>
+        detectDateRange(s) || /^\(\s*(?:19|20)\d{2}\s*\)$/.test(s) ? " " : s,
+      )
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    const parts = nameLine.split(/\s+[—–]\s+|\s+-\s+/);
+    const name = (parts[0] ?? "").replace(/\s{2,}/g, " ").trim();
+    const desc0 = parts.slice(1).join(" — ").trim();
+    curProj = { name, desc: desc0 ? [desc0] : [], url, technologies: [] };
+  }
+  pushProj();
+
+  // --- certifications: "Name — Issuer, 2023" / "Name (Issuer, 2022)" ---
+  for (const raw of sections.certifications) {
+    const line = raw.replace(BULLET_RE, "").trim();
+    if (!line || line.length < 4 || /^(https?:\/\/|www\.)/i.test(line)) continue;
+    const tokens = [...line.matchAll(DATE_TOKEN)].map((m) => m[1]!);
+    const issuedDate = tokens.length > 0 ? normaliseCvDate(tokens[tokens.length - 1]!) ?? "" : "";
+    const rest = line
+      .replace(DATE_TOKEN, " ")
+      .replace(PRESENT_RE, " ")
+      .replace(/[\s,;:()[\]]+$/, "")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    let name = rest;
+    let issuer = "";
+    const parts = rest.split(/\s*[—–]\s+|\s+\|\s+|\s*:\s+|\s+-\s+/);
+    if (parts.length >= 2 && parts[0]!.trim()) {
+      name = parts[0]!.trim();
+      issuer = parts.slice(1).join(" ").replace(/^[\s,;:]+|[\s,;:]+$/g, "").trim();
+    } else {
+      const paren = rest.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+      const inner = paren?.[2] ?? "";
+      // Inner parens are an issuer only when they carry a comma or two+ words;
+      // "(CSM)" stays part of the name, "(Coursera, 2022)" becomes the issuer.
+      if (paren && paren[1]!.trim() && inner && (inner.includes(" ") || inner.includes(","))) {
+        name = paren[1]!.trim();
+        issuer = inner.replace(/[\d]{4}/g, "").replace(/[\s,;:]+$/, "").trim();
+      }
+    }
+    name = name.replace(/\s{2,}/g, " ").trim().slice(0, 200);
+    if (name.length < 4) continue;
+    draft.certifications.push({ name, issuer: issuer.slice(0, 200), issuedDate });
+    if (draft.certifications.length >= 20) break;
+  }
+
+  // Portfolio list: normalise, dedupe case-insensitively, cap at 5.
+  draft.contact.portfolioUrls = [
+    ...new Set(draft.contact.portfolioUrls.map((u) => normaliseUrl(u))),
+  ].slice(0, 5);
+
   return draft;
 }
 
@@ -470,7 +608,8 @@ export function mergeDraftIntoProfile(
 
   if (selections.contact) {
     let n = 0;
-    const map: [keyof typeof draft.contact, keyof CandidateProfile["contact"]][] = [
+    type ScalarContactKey = Exclude<keyof CvProfileDraft["contact"], "portfolioUrls">;
+    const map: [ScalarContactKey, keyof CandidateProfile["contact"]][] = [
       ["fullName", "fullName"], ["email", "email"], ["phone", "phone"],
       ["currentCity", "currentCity"], ["currentCountry", "currentCountry"],
       ["nationality", "nationality"], ["linkedinUrl", "linkedinUrl"], ["githubUrl", "githubUrl"],
@@ -492,6 +631,23 @@ export function mergeDraftIntoProfile(
       } else if (existing.toLowerCase() !== incoming.toLowerCase()) {
         conflicts.push(`contact.${pKey}: profile keeps "${existing}" (CV said "${incoming}").`);
       }
+    }
+    // Portfolio URLs: additive only — append new valid URLs, never remove
+    // existing ones; case-insensitive dedupe; cap at the schema max of 20.
+    for (const raw of draft.contact.portfolioUrls) {
+      const u = normaliseUrl(raw);
+      const host = u.replace(/^https?:\/\//i, "").split(/[/?#]/)[0] ?? "";
+      if (!/^https?:\/\/\S+$/i.test(u) || !host.includes(".")) {
+        skipped.push(`contact.portfolioUrls: "${raw}" not a valid URL — skipped.`);
+        continue;
+      }
+      if (next.contact.portfolioUrls.some((x) => x.toLowerCase() === u.toLowerCase())) continue;
+      if (next.contact.portfolioUrls.length >= 20) {
+        skipped.push("contact.portfolioUrls: 20-URL limit reached — remaining skipped.");
+        break;
+      }
+      next.contact.portfolioUrls.push(u);
+      n += 1;
     }
     if (n > 0) applied.contact = n;
   }
@@ -668,7 +824,14 @@ export function mergeDraftIntoProfile(
 
 /** Count how many draft facts each section would contribute (for the review UI). */
 export function draftSectionCounts(draft: CvProfileDraft): Record<CvMergeSection, number> {
-  const contactFilled = (Object.values(draft.contact) as string[]).filter((v) => v.trim()).length;
+  let contactFilled = 0;
+  for (const v of Object.values(draft.contact)) {
+    if (typeof v === "string") {
+      if (v.trim()) contactFilled += 1;
+    } else if (Array.isArray(v)) {
+      contactFilled += v.filter((x) => typeof x === "string" && x.trim()).length;
+    }
+  }
   return {
     contact: contactFilled,
     summary: draft.professionalSummary.trim() ? 1 : 0,

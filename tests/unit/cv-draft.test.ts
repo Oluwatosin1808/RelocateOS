@@ -12,7 +12,7 @@ import { candidateProfileSchema, type CandidateProfile } from "@domain/schemas/c
 
 const SAMPLE_CV = `ADA OKONKWO
 Lagos, Nigeria · ada.okonkwo@example.com · +234 803 123 4567
-linkedin.com/in/adaokonkwo · github.com/adaok
+linkedin.com/in/adaokonkwo · github.com/adaok · ada.dev
 
 PROFESSIONAL SUMMARY
 Product-minded frontend engineer with 6 years building accessible web apps.
@@ -34,6 +34,15 @@ Technologies: JavaScript, Bubble
 
 EDUCATION
 BSc Computer Science, University of Lagos            2015 – 2019
+
+PROJECTS
+RelocateOS — AI job discovery platform (2024 – Present)
+• Next.js app for job seekers
+https://relocateos.example.com
+Technologies: Next.js, TypeScript, Firebase
+
+ShipMate — logistics dashboard (2023)
+Technologies: React, Node.js
 
 LANGUAGES
 English (Native)
@@ -100,6 +109,33 @@ describe("parseCvDraft (deterministic)", () => {
     expect(draft.contact.githubUrl).toContain("github.com/adaok");
   });
 
+  it("extracts the portfolio URL from the contact header, excluding linkedin/github/email host", () => {
+    expect(draft.contact.portfolioUrls).toEqual(["https://ada.dev"]);
+  });
+
+  it("extracts projects with description, url and technologies", () => {
+    expect(draft.projects).toHaveLength(2);
+    const ro = draft.projects.find((p) => p.name === "RelocateOS");
+    expect(ro?.description).toContain("AI job discovery platform");
+    expect(ro?.description).toContain("Next.js app for job seekers");
+    expect(ro?.url).toBe("https://relocateos.example.com");
+    expect(ro?.technologies).toContain("Next.js");
+    expect(ro?.technologies).toContain("TypeScript");
+    expect(ro?.technologies).toContain("Firebase");
+    const sm = draft.projects.find((p) => p.name === "ShipMate");
+    expect(sm?.description).toContain("logistics dashboard");
+    expect(sm?.url).toBe("");
+    expect(sm?.technologies).toContain("Node.js");
+  });
+
+  it("extracts certifications with issuer and issued year", () => {
+    expect(draft.certifications).toHaveLength(1);
+    const cert = draft.certifications[0]!;
+    expect(cert.name).toBe("AWS Certified Cloud Practitioner");
+    expect(cert.issuer).toBe("Amazon");
+    expect(cert.issuedDate).toBe("2023");
+  });
+
   it("captures the summary section", () => {
     expect(draft.professionalSummary).toContain("frontend engineer");
   });
@@ -138,6 +174,7 @@ describe("mergeDraftIntoProfile", () => {
 
     expect(res.profile.contact.fullName).toBe("ADA OKONKWO");
     expect(res.profile.contact.email).toBe("ada.okonkwo@example.com");
+    expect(res.profile.contact.portfolioUrls).toContain("https://ada.dev");
     expect(res.applied.workExperience).toBeGreaterThanOrEqual(2);
     expect(res.applied.skills).toBeGreaterThan(0);
     expect(res.profile.workExperience.every((w) => w.provenance === "imported-pending-review")).toBe(true);
@@ -176,7 +213,25 @@ describe("mergeDraftIntoProfile", () => {
     const second = mergeDraftIntoProfile(first.profile, draft, allOn);
     expect(second.profile.workExperience.length).toBe(first.profile.workExperience.length);
     expect(second.profile.skills.length).toBe(first.profile.skills.length);
+    expect(second.profile.contact.portfolioUrls).toEqual(first.profile.contact.portfolioUrls);
     expect(second.applied.workExperience ?? 0).toBe(0);
+  });
+
+  it("appends portfolio URLs without overwriting, dedupes, skips invalid honestly", () => {
+    const profile = baseProfile();
+    profile.contact.portfolioUrls = ["https://mysite.com"];
+    const draft = parseCvDraft(SAMPLE_CV);
+    draft.contact.portfolioUrls.push("ADA.DEV", "not a url", "https://mysite.com");
+    const res = mergeDraftIntoProfile(profile, draft, allOn);
+    // existing user URL kept, new ones appended
+    expect(res.profile.contact.portfolioUrls).toContain("https://mysite.com");
+    expect(res.profile.contact.portfolioUrls).toContain("https://ada.dev");
+    // case-insensitive dedupe — mysite.com appears once
+    expect(res.profile.contact.portfolioUrls.filter((u) => u.toLowerCase().includes("mysite.com"))).toHaveLength(1);
+    // invalid entries skipped with an honest reason, never coerced into fake URLs
+    expect(res.profile.contact.portfolioUrls.some((u) => u.includes("not"))).toBe(false);
+    expect(res.skipped.some((s) => s.includes("not a url"))).toBe(true);
+    expect(candidateProfileSchema.safeParse(res.profile).success).toBe(true);
   });
 
   it("respects section selections — off sections stay untouched", () => {
@@ -195,9 +250,10 @@ describe("draftSectionCounts", () => {
   it("counts non-empty sections for the review UI", () => {
     const draft = parseCvDraft(SAMPLE_CV);
     const counts = draftSectionCounts(draft);
-    expect(counts.contact).toBeGreaterThanOrEqual(3);
+    expect(counts.contact).toBeGreaterThanOrEqual(4);
     expect(counts.workExperience).toBeGreaterThanOrEqual(2);
     expect(counts.skills).toBeGreaterThan(0);
-    expect(counts.projects).toBe(0);
+    expect(counts.projects).toBe(2);
+    expect(counts.certifications).toBe(1);
   });
 });

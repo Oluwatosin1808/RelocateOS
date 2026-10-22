@@ -41,7 +41,7 @@ type ParseResponse = {
 };
 
 const SECTION_LABELS: Record<CvMergeSection, string> = {
-  contact: "Contact details (fills empty fields only — your values win)",
+  contact: "Contact details + portfolio links (fills empty fields only — your values win)",
   summary: "Professional summary",
   workExperience: "Work experience",
   education: "Education",
