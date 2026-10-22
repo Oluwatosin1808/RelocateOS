@@ -2,7 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import { jobSchema, type Job, type CountryCode, type JobStatus } from "@domain/schemas/job";
-import { jobScoreDocSchema } from "@/lib/jobs/scoring-dal";
+import { getJobScores } from "@/lib/jobs/scoring-dal";
 
 export type JobFilters = {
   status?: JobStatus | null;
@@ -96,21 +96,12 @@ export async function listJobs(filters: JobFilters = {}): Promise<JobListPage> {
     );
   }
 
-  // Optional: re-order by match score (descending). Uns scored jobs sink to the bottom.
+  // Optional: re-order by match score (descending). Unscored jobs sink to the bottom.
+  // Scores are fetched via getJobScores, which chunks the Firestore `in` query —
+  // a single `in` with the whole page (up to 100 ids) exceeds Firestore's 30-value
+  // cap and throws INVALID_ARGUMENT at render time.
   if (filters.sortByScore && filtered.length > 0) {
-    const scoreSnap = await adminDb()
-      .collection("jobScores")
-      .where(
-        "jobId",
-        "in",
-        filtered.map((j) => j.id),
-      )
-      .get();
-    const scoreMap = new Map<string, number>();
-    for (const d of scoreSnap.docs) {
-      const parsed = jobScoreDocSchema.safeParse(d.data());
-      if (parsed.success) scoreMap.set(parsed.data.jobId, parsed.data.total);
-    }
+    const scoreMap = await getJobScores(filtered.map((j) => j.id));
     filtered = [...filtered].sort((a, b) => (scoreMap.get(b.id) ?? -1) - (scoreMap.get(a.id) ?? -1));
   }
 
